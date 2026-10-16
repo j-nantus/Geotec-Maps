@@ -1,21 +1,19 @@
 # Geotec Maps
 
-Proof-of-concept shallow geotech bore map (Melbourne region first).
+Shallow geotech bore map for Australian metros and large cities we define — not a
+full-country fill. Coverage is driven by region configs under `regions/`; adapters
+normalise each jurisdiction into a standard template; the map builder only reads that
+template. See [docs/national-map.md](docs/national-map.md).
 
-A snapshot map of publicly available shallow ground data for towns and cities from Ballarat
-to Warragul and Sunbury to Anglesea / Western Port, built from Victorian government bore
-logs. Bores are kept inside ABS Urban Centres and Localities, plus a buffer along major
-roads (freeway / highway / numbered arterial) that link those towns — not a plain square
-box. Search an address, pick a radius, and get a summary of nearby bores: main material in
-the top 3 m, fill thickness, depth to rock, and any soft/organic layers.
+**Current coverage:** Greater Melbourne and linked towns (Ballarat to Warragul, Sunbury
+to Anglesea / Western Port), from Victorian government bore logs. Bores are kept inside
+ABS Urban Centres and Localities, plus a buffer along major roads linking those towns.
+Other capitals ship as disabled stubs until you define their envelopes and adapters.
 
-**National direction:** one Australia-wide map from a standardised data template, covering
-only metros and large cities we define (not a full-country fill). See
-[docs/national-map.md](docs/national-map.md).
-
-Open `output/melbourne-bore-map.html` in a browser (needs an internet connection for the
+Open `output/australia-bore-map.html` in a browser (needs an internet connection for the
 basemap and address search). Right-click the map to search at any point. Results can be
-downloaded as CSV.
+downloaded as CSV. The earlier Melbourne PoC file
+`output/melbourne-bore-map.html` may still be present from previous builds.
 
 If an address matches several places (for example "Smith Street"), the map lists every match
 with a numbered pin and the number of logged bores nearby, and you pick the one to search.
@@ -56,18 +54,18 @@ Desk-study use only – not a substitute for site investigation.
 Python 3.10+ only; no extra packages.
 
 ```powershell
-cd "Geotech data map\scripts"
-python fetch_bores.py      # downloads to data/ (about 40 s)
-python build_map.py        # writes output/melbourne-bore-map.html
+cd scripts
+python fetch_regions.py   # enabled regions → data/ (Melbourne ~40 s)
+python build_map.py       # → output/australia-bore-map.html
 ```
 
 Options:
 
-- `fetch_bores.py --bbox MIN_LON MIN_LAT MAX_LON MAX_LAT` for a different area.
-- `fetch_bores.py --no-urban-clip` to keep every bore in the rectangular box.
-- `fetch_bores.py --no-road-corridors` for urban footprints only.
-- `fetch_bores.py --corridor-m 3000` to widen the road buffer (default 2000 m).
+- `fetch_regions.py --region melbourne` to fetch one region by id.
+- `fetch_regions.py --region melbourne --force` to fetch a disabled region that already has adapter + bbox.
+- `fetch_bores.py` — Melbourne-oriented wrapper (supports `--bbox`, `--no-urban-clip`, `--no-road-corridors`, `--corridor-m`).
 - `build_map.py --max-depth 30` drops log intervals starting deeper than this.
+- `build_map.py --out ../output/melbourne-bore-map.html` to write the old PoC filename.
 
 ## How soil descriptions are classified
 
