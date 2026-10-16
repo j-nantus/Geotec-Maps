@@ -1,4 +1,6 @@
-# Geotech data map (proof of concept)
+# Geotec Maps
+
+Proof-of-concept shallow geotech bore map (Melbourne region first).
 
 A snapshot map of publicly available shallow ground data for towns and cities from Ballarat
 to Warragul and Sunbury to Anglesea / Western Port, built from Victorian government bore
