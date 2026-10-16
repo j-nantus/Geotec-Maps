@@ -1,0 +1,13 @@
+{
+  "id": "canberra",
+  "name": "Canberra",
+  "enabled": false,
+  "adapter": null,
+  "jurisdiction": "ACT",
+  "bbox": null,
+  "abs_state_name": "Australian Capital Territory",
+  "urban_clip": true,
+  "road_corridors": true,
+  "corridor_m": 2000,
+  "notes": "TODO: define download envelope, UCL centres, and ACT/NSW bore adapter."
+}

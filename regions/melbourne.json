@@ -1,0 +1,13 @@
+{
+  "id": "melbourne",
+  "name": "Greater Melbourne and linked towns",
+  "enabled": true,
+  "adapter": "vic_deeca",
+  "jurisdiction": "VIC",
+  "bbox": [143.70, -38.60, 146.10, -37.25],
+  "abs_state_name": "Victoria",
+  "urban_clip": true,
+  "road_corridors": true,
+  "corridor_m": 2000,
+  "notes": "Ballarat to Warragul, Sunbury to Anglesea / Western Port; ABS UCL + major-road corridors."
+}

@@ -1,0 +1,13 @@
+{
+  "id": "brisbane",
+  "name": "Greater Brisbane",
+  "enabled": false,
+  "adapter": null,
+  "jurisdiction": "QLD",
+  "bbox": null,
+  "abs_state_name": "Queensland",
+  "urban_clip": true,
+  "road_corridors": true,
+  "corridor_m": 2000,
+  "notes": "TODO: define download envelope, UCL/SUA centres, and QLD bore adapter."
+}

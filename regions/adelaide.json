@@ -1,0 +1,13 @@
+{
+  "id": "adelaide",
+  "name": "Greater Adelaide",
+  "enabled": false,
+  "adapter": null,
+  "jurisdiction": "SA",
+  "bbox": null,
+  "abs_state_name": "South Australia",
+  "urban_clip": true,
+  "road_corridors": true,
+  "corridor_m": 2000,
+  "notes": "TODO: define download envelope, UCL/SUA centres, and SA bore adapter."
+}

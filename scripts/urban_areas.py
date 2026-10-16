@@ -33,19 +33,23 @@ def _ring_bbox(ring: list[tuple[float, float]]) -> tuple[float, float, float, fl
 
 def fetch_urban_polygons(
     bbox: tuple[float, float, float, float],
+    state_name: str = "Victoria",
 ) -> tuple[list[dict], list[str]]:
     """Download Major/Other Urban UCL polygons intersecting bbox.
+
+    state_name is the ABS ASGS 2021 state_name_2021 value (e.g. Victoria).
 
     Returns (polygons, names) where each polygon is
     {"name": str, "rings": [...], "bbox": (min_lon, min_lat, max_lon, max_lat)}.
     """
+    safe_state = state_name.replace("'", "''")
     envelope = json.dumps({
         "xmin": bbox[0], "ymin": bbox[1], "xmax": bbox[2], "ymax": bbox[3],
         "spatialReference": {"wkid": 4326},
     })
     payload = _get_json(UCL_SERVICE, {
         "where": (
-            "state_name_2021='Victoria' AND "
+            f"state_name_2021='{safe_state}' AND "
             "sos_name_2021 IN ('Major Urban','Other Urban')"
         ),
         "geometry": envelope,

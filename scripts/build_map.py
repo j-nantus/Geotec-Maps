@@ -14,13 +14,13 @@ import re
 from collections import Counter
 from pathlib import Path
 
-from fetch_bores import MELBOURNE_BBOX, SERVICE, fetch_layer
+from adapters.vic_deeca import MELBOURNE_BBOX, SERVICE, fetch_layer
 from location_flags import fetch_parish_polygons, flag_bore
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
 TEMPLATE = Path(__file__).resolve().parent / "map_template.html"
-DEFAULT_OUT = ROOT / "output" / "melbourne-bore-map.html"
+DEFAULT_OUT = ROOT / "output" / "australia-bore-map.html"
 
 CATEGORIES = [
     ("Fill / pavement", "#8c6d62"),
@@ -107,6 +107,10 @@ def _num(value: str) -> float | None:
         return None
 
 
+def _source_url(bore: dict) -> str:
+    return (bore.get("source_url") or bore.get("wmis_url") or "").strip()
+
+
 def _load_bores() -> dict[str, dict]:
     candidates = [p for p in (DATA_DIR / "bores.csv", DATA_DIR / "bores-new.csv") if p.exists()]
     path = max(candidates, key=lambda p: p.stat().st_mtime)
@@ -124,6 +128,28 @@ def _load_bores() -> dict[str, dict]:
             if key in bores and not bores[key].get("parish"):
                 bores[key]["parish"] = (r.get("parish") or "").strip()
     return bores
+
+
+def _source_meta(info: dict) -> tuple[str, str]:
+    """Return (source label, primary service URL) from fetch-info."""
+    regions = info.get("regions") or []
+    if regions:
+        labels = []
+        service = ""
+        for r in regions:
+            label = r.get("source_label") or r.get("adapter") or r.get("id")
+            if label and label not in labels:
+                labels.append(label)
+            if not service and r.get("service"):
+                service = r["service"]
+        licence = next((r.get("licence") for r in regions if r.get("licence")), "")
+        source = ", ".join(labels)
+        if licence:
+            source = f"{source} ({licence})"
+        return source or "Public bore records", service or SERVICE
+    if info.get("service"):
+        return "DEECA Victorian Groundwater Bores (CC BY 4.0)", info["service"]
+    return "DEECA Victorian Groundwater Bores (CC BY 4.0)", SERVICE
 
 
 def build(out_path: Path, max_depth: float) -> None:
@@ -155,7 +181,7 @@ def build(out_path: Path, max_depth: float) -> None:
                 layer[2] = prev[2]
         mapped.append((key, b, logs))
 
-    parish_names = { (b.get("parish") or "").strip() for _, b, _ in mapped }
+    parish_names = {(b.get("parish") or "").strip() for _, b, _ in mapped}
     parish_names.discard("")
     print(f"Downloading Vicmap parish boundaries for {len(parish_names)} parishes...")
     parish_polys = fetch_parish_polygons(parish_names)
@@ -170,10 +196,12 @@ def build(out_path: Path, max_depth: float) -> None:
             n_water += 1
         if out_parish:
             n_parish += 1
+        dataset = b.get("dataset") or "historic"
+        dataset_idx = datasets.index(dataset) if dataset in datasets else 0
         rows.append([
             key,
             b["bore_id"],
-            datasets.index(b["dataset"]),
+            dataset_idx,
             round(lat, 6),
             round(lon, 6),
             _num(b["depth_m"]),
@@ -181,7 +209,7 @@ def build(out_path: Path, max_depth: float) -> None:
             b["position_accuracy"],
             log_source.get(key, ""),
             logs,
-            b.get("wmis_url", ""),
+            _source_url(b),
             parish,
             1 if in_water else 0,
             1 if out_parish else 0,
@@ -189,13 +217,16 @@ def build(out_path: Path, max_depth: float) -> None:
 
     info_path = DATA_DIR / "fetch-info.json"
     info = json.loads(info_path.read_text(encoding="utf-8")) if info_path.exists() else {}
+    source_label, service = _source_meta(info)
+    region_names = [r.get("name") or r.get("id") for r in (info.get("regions") or [])]
     payload = {
         "meta": {
             "downloaded": info.get("downloaded_utc", ""),
             "total_bores": info.get("bores", len(bores)),
             "max_depth": max_depth,
-            "source": "DEECA Victorian Groundwater Bores (CC BY 4.0)",
-            "service": SERVICE,
+            "source": source_label,
+            "service": service,
+            "regions": region_names,
             "datasets": ["Historic bore", "State monitoring bore", "Water Register bore (2017+)"],
             "dataset_pages": [
                 "https://data.water.vic.gov.au/groundwater-monitoring-statewide",
