@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Melbourne region shallow ground data – proof of concept</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font: 13px/1.4 "Segoe UI", Arial, sans-serif; color: #222; }
+  #app { display: flex; height: 100%; }
+  #side { width: 400px; min-width: 340px; display: flex; flex-direction: column; border-right: 1px solid #ccc; background: #fafafa; }
+  #side header { padding: 12px 14px 8px; border-bottom: 1px solid #ddd; background: #fff; }
+  #side h1 { font-size: 16px; margin: 0 0 2px; }
+  .muted { color: #666; font-size: 12px; }
+  .panel { padding: 10px 14px; border-bottom: 1px solid #e3e3e3; }
+  .row { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+  input[type=text] { flex: 1; padding: 6px 8px; border: 1px solid #bbb; border-radius: 4px; font: inherit; }
+  select, button { padding: 5px 8px; border: 1px solid #bbb; border-radius: 4px; background: #fff; font: inherit; cursor: pointer; }
+  button.primary { background: #1f5fa8; color: #fff; border-color: #1f5fa8; }
+  button:disabled { opacity: .5; cursor: default; }
+  #legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; }
+  .lg { display: flex; align-items: center; gap: 5px; font-size: 12px; }
+  .sw { width: 12px; height: 12px; border-radius: 50%; border: 1px solid #555; display: inline-block; }
+  #results { flex: 1; overflow-y: auto; }
+  #summary { padding: 10px 14px; background: #fff; border-bottom: 1px solid #e3e3e3; }
+  #summary h2 { font-size: 14px; margin: 0 0 6px; }
+  #summary ul { margin: 4px 0 0; padding-left: 18px; }
+  .item { display: flex; gap: 10px; padding: 8px 14px; border-bottom: 1px solid #eee; cursor: pointer; }
+  .item:hover { background: #eef4fb; }
+  .item .t { font-weight: 600; }
+  .item .d { font-size: 12px; color: #444; }
+  .warn { color: #a15c00; }
+  footer { padding: 8px 14px; font-size: 11px; color: #666; border-top: 1px solid #ddd; background: #fff; }
+  #map { flex: 1; }
+  .pop h3 { margin: 0 0 4px; font-size: 14px; }
+  .pop table { border-collapse: collapse; font-size: 12px; }
+  .pop td { padding: 1px 6px 1px 0; vertical-align: top; }
+  .pop .log { display: flex; gap: 8px; margin-top: 6px; max-height: 260px; overflow-y: auto; }
+  .pop .log table td:first-child { white-space: nowrap; color: #555; }
+  .chip { display: inline-block; width: 9px; height: 9px; margin-right: 4px; border: 1px solid #555; }
+  .pop .links { margin-top: 8px; padding-top: 6px; border-top: 1px solid #ddd; font-size: 12px; }
+  .pop .links ul { margin: 2px 0 4px; padding-left: 16px; }
+  .pop .links .muted { font-size: 11px; }
+  .choice { display: flex; gap: 8px; align-items: flex-start; padding: 7px 14px; border-bottom: 1px solid #eee; cursor: pointer; }
+  .choice:hover { background: #eef4fb; }
+  .choice .t { font-weight: 600; }
+  .choice .d { font-size: 12px; }
+  .choice .n { flex: none; width: 20px; height: 20px; border-radius: 50%; background: #1f5fa8; color: #fff; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+  .pin { width: 22px; height: 22px; background: #1f5fa8; color: #fff; border: 2px solid #fff; border-radius: 50%; font: 600 11px/18px "Segoe UI", Arial, sans-serif; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,.5); }
+  .filters { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+  .filters label { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; cursor: pointer; }
+  .filters input { margin-top: 2px; }
+  .loc-warn { color: #a15c00; font-size: 12px; margin-top: 2px; text-decoration: underline; text-underline-offset: 2px; }
+  .pop .loc-warn-box { margin: 6px 0; padding: 6px 8px; background: #fff4e5; border-left: 3px solid #c47a00; font-size: 12px; color: #7a4500; }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="side">
+    <header>
+      <h1>Melbourne region shallow ground data</h1>
+      <div class="muted">Proof of concept · <span id="count"></span> bores with soil logs</div>
+    </header>
+
+    <div class="panel">
+      <label><b>Find data near a site</b></label>
+      <div class="row">
+        <input type="text" id="q" placeholder="Address, suburb, or -37.81, 144.96">
+      </div>
+      <div class="row">
+        <span>within</span>
+        <select id="radius">
+          <option value="250">250 m</option>
+          <option value="500" selected>500 m</option>
+          <option value="1000">1 km</option>
+          <option value="2000">2 km</option>
+        </select>
+        <button class="primary" id="go">Search</button>
+        <button id="clear">Clear</button>
+      </div>
+      <div class="muted" style="margin-top:4px">Tip: right-click anywhere on the map to search there.</div>
+    </div>
+
+    <div class="panel">
+      <b>Hide from map</b>
+      <div class="filters">
+        <label><input type="checkbox" id="hideWrong"> Bores that may be in the wrong place (outside recorded parish)</label>
+        <label><input type="checkbox" id="hideWater"> Bores plotted in open water</label>
+      </div>
+      <div class="muted" style="margin-top:4px">Flagged bores keep their soil colour and show a red outline. Uncheck to show them again.</div>
+    </div>
+
+    <div class="panel">
+      <div class="row" style="margin-top:0">
+        <b>Colour points by</b>
+        <select id="mode">
+          <option value="dom">Main material, top 3 m</option>
+          <option value="fill">Fill thickness at surface</option>
+          <option value="rock">Depth to rock (incl. weathered)</option>
+        </select>
+      </div>
+      <div id="legend"></div>
+    </div>
+
+    <div id="results">
+      <div id="summary" class="muted">Search an address or right-click the map to list nearby bores and summarise the shallow ground conditions.</div>
+      <div id="list"></div>
+    </div>
+
+    <footer>
+      Data: <span id="src"></span>, downloaded <span id="dl"></span>.
+      Bore logs are mostly driller descriptions from water bores; positions can be approximate.
+      Desk-study use only – not a substitute for site investigation.
+    </footer>
+  </aside>
+  <div id="map"></div>
+</div>
+
+<script>
+const DATA = /*__DATA__*/null;
+const CATS = DATA.categories;
+const C = { FILL: 0, ORG: 6, WROCK: 7, ROCK: 8, ND: 9 };
+const DATASETS = DATA.meta.datasets;
+const TOP_M = 3;
+
+const esc = s => String(s ?? "").replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+const fmt = (v, d = 1) => v == null ? "–" : Number(v).toFixed(d).replace(/\.0$/, "");
+
+// ---------- derive per-bore summaries ----------
+const bores = DATA.bores.map(r => {
+  const [key, id, ds, lat, lon, depth, drilled, acc, logSrc, layers, wmis, parish, inWater, outParish] = r;
+  layers.forEach((l, i) => {
+    if (l[1] == null || l[1] <= l[0]) {
+      const next = layers[i + 1];
+      l[1] = next && next[0] > l[0] ? next[0] : l[0] + 0.5;
+    }
+  });
+  const b = {
+    key, id, ds, lat, lon, depth, drilled, acc, logSrc, layers, wmis,
+    parish: parish || "",
+    inWater: !!inWater,
+    outParish: !!outParish,
+  };
+  b.flagged = b.inWater || b.outParish;
+  b.logDepth = layers.reduce((m, l) => Math.max(m, l[1]), 0);
+
+  let fill = 0;
+  for (const l of layers) {
+    if (l[0] > fill + 0.05 || l[2] !== C.FILL) break;
+    fill = l[1];
+  }
+  b.fill = fill;
+
+  const rock = layers.find(l => l[2] === C.ROCK || l[2] === C.WROCK);
+  b.rock = rock ? rock[0] : null;
+
+  b.soft = layers.some(l => l[0] < 10 && (l[2] === C.ORG || /COODE|PEAT/i.test(l[3])));
+
+  const t = new Array(CATS.length).fill(0);
+  for (const [f, to, c] of layers) {
+    const a = Math.max(f, 0), z = Math.min(to, TOP_M);
+    if (z > a) t[c] += z - a;
+  }
+  let best = C.ND, bv = 0;
+  t.forEach((v, i) => { if (i !== C.ND && v > bv) { bv = v; best = i; } });
+  b.dom = best;
+  return b;
+});
+document.getElementById("count").textContent = bores.length.toLocaleString();
+document.getElementById("src").textContent = DATA.meta.source;
+document.getElementById("dl").textContent = (DATA.meta.downloaded || "").slice(0, 10);
+
+// ---------- colour modes ----------
+const FILL_BINS = [[0, "None", "#d9ead3"], [0.5, "< 0.5 m", "#ffe599"], [1, "0.5–1 m", "#f6b26b"], [2, "1–2 m", "#e06666"], [4, "2–4 m", "#a61c1c"], [Infinity, "> 4 m", "#4c0000"]];
+const ROCK_BINS = [[1, "< 1 m", "#08306b"], [3, "1–3 m", "#2171b5"], [6, "3–6 m", "#6baed6"], [10, "6–10 m", "#c6dbef"], [Infinity, "> 10 m", "#fdd0a2"]];
+const NO_ROCK = ["Not reached", "#f16913"];
+
+function colourFor(b, mode) {
+  if (mode === "fill") {
+    if (b.fill === 0) return FILL_BINS[0][2];
+    return FILL_BINS.slice(1).find(([lim]) => b.fill <= lim)[2];
+  }
+  if (mode === "rock") {
+    if (b.rock == null) return NO_ROCK[1];
+    return ROCK_BINS.find(([lim]) => b.rock < lim)[2];
+  }
+  return CATS[b.dom].color;
+}
+
+function renderLegend(mode) {
+  let items;
+  if (mode === "fill") items = FILL_BINS.map(([, n, c]) => [n, c]);
+  else if (mode === "rock") items = [...ROCK_BINS.map(([, n, c]) => [n, c]), NO_ROCK];
+  else items = CATS.map(c => [c.name, c.color]);
+  document.getElementById("legend").innerHTML = items
+    .map(([n, c]) => `<span class="lg"><span class="sw" style="background:${c}"></span>${esc(n)}</span>`).join("");
+}
+
+// ---------- map ----------
+const map = L.map("map", { preferCanvas: true }).setView([-37.84, 144.98], 11);
+const esri = name => `https://server.arcgisonline.com/ArcGIS/rest/services/${name}/MapServer/tile/{z}/{y}/{x}`;
+const streets = L.tileLayer(esri("World_Street_Map"), { maxZoom: 19, attribution: "Basemap &copy; Esri" }).addTo(map);
+const imagery = L.tileLayer(esri("World_Imagery"), { maxZoom: 19, attribution: "Imagery &copy; Esri" });
+L.control.layers({ "Street map": streets, "Aerial imagery": imagery },
+  null, { position: "topright" }).addTo(map);
+L.control.scale({ imperial: false }).addTo(map);
+
+function stripSvg(b, maxD = 10, w = 16, h = 100) {
+  const sc = h / maxD;
+  let s = `<svg width="${w + 22}" height="${h + 8}" style="flex:none"><g transform="translate(0,4)">`;
+  for (const [f, to, c] of b.layers) {
+    if (f >= maxD) break;
+    const y = f * sc, hh = Math.max(Math.min(to, maxD) * sc - y, 0.8);
+    s += `<rect x="0" y="${y}" width="${w}" height="${hh}" fill="${CATS[c].color}" stroke="#333" stroke-width="0.3"/>`;
+  }
+  if (b.logDepth < maxD) {
+    const y = b.logDepth * sc;
+    s += `<line x1="0" x2="${w}" y1="${y}" y2="${y}" stroke="#000" stroke-width="1.2"/>`;
+  }
+  s += `<rect x="0" y="0" width="${w}" height="${h}" fill="none" stroke="#555" stroke-width="0.6"/>`;
+  for (let d = 0; d <= maxD; d += maxD <= 10 ? 2 : 5)
+    s += `<text x="${w + 3}" y="${d * sc + 3}" font-size="8" fill="#555">${d}</text>`;
+  return s + "</g></svg>";
+}
+
+const WATER_REGISTER_EMAIL = "waterregister.support@deeca.vic.gov.au";
+
+function recordQuery(layer, where, fields, order) {
+  const p = new URLSearchParams({ where, outFields: fields, returnGeometry: "false", f: "html" });
+  if (order) p.set("orderByFields", order);
+  return `${DATA.meta.service}/${layer}/query?${p}`;
+}
+
+function sourceLinks(b) {
+  if (b.ds === 2) {
+    const reportId = b.key.replace(/^REG-/, "");
+    const where = `reportid='${reportId}'`;
+    return {
+      record: recordQuery(43, where, "*"),
+      log: recordQuery(3, where, "reportid,station,depthfrom,depthto,descript", "OBJECTID"),
+      wmis: "",
+      reportId,
+      request: `mailto:${WATER_REGISTER_EMAIL}?subject=${encodeURIComponent(`Request for bore completion report ${reportId} (bore ${b.id})`)}`,
+    };
+  }
+  const where = `boreid='${b.id}'`;
+  const monitoring = b.ds === 1;
+  return {
+    record: recordQuery(monitoring ? 12 : 42, where, "*"),
+    log: recordQuery(monitoring ? 7 : 47, where,
+      monitoring ? "boreid,source,interpretation,depth_from_m,depth_to_m,lithology_description"
+                 : "boreid,source,interpretation,depth_from_m,depth_to_m,lithologydescription",
+      "source,depth_from_m"),
+    wmis: b.wmis || "",
+    reportId: "",
+    request: "",
+  };
+}
+
+function linksHtml(b) {
+  const s = sourceLinks(b);
+  const a = (href, text) => `<a href="${esc(href)}" target="_blank" rel="noopener">${text}</a>`;
+  const items = [
+    `${a(s.log, "Original log record")} <span class="muted">– as held in the DEECA bore database</span>`,
+    `${a(s.record, "Bore details record")} <span class="muted">– location, construction, driller</span>`,
+  ];
+  if (s.wmis) items.push(`${a(s.wmis, "WMIS bore page")} <span class="muted">– water levels and construction</span>`);
+  if (s.request) items.push(`${a(s.request, `Request completion report ${esc(s.reportId)}`)} <span class="muted">– the lodged driller's report is not online; email the Water Register</span>`);
+  else items.push(`<span class="muted">Scanned original logs for historic bores are not published online.</span>`);
+  items.push(`${a(DATA.meta.dataset_pages[b.ds], "About this dataset")} <span class="muted">– ${esc(DATA.meta.source)}</span>`);
+  return `<div class="links"><b>Source</b><ul>${items.map(i => `<li>${i}</li>`).join("")}</ul>
+    <div class="muted">Database pages list the results below a query form – scroll down.</div></div>`;
+}
+
+function locationWarnHtml(b) {
+  const parts = [];
+  if (b.inWater) {
+    parts.push("This point has been plotted in open water (Port Phillip Bay). The coordinates in the government database are likely wrong.");
+  }
+  if (b.outParish) {
+    parts.push(`Location may be wrong — coordinates fall outside recorded parish (${esc(b.parish)}).`);
+  }
+  if (!parts.length) return "";
+  return `<div class="loc-warn-box">${parts.join("<br>")}</div>`;
+}
+
+function locationWarnLine(b) {
+  if (b.inWater && b.outParish) {
+    return `<div class="loc-warn">In open water · outside parish (${esc(b.parish)})</div>`;
+  }
+  if (b.inWater) return `<div class="loc-warn">Plotted in open water — location may be wrong</div>`;
+  if (b.outParish) {
+    return `<div class="loc-warn">Location may be wrong — outside parish (${esc(b.parish)})</div>`;
+  }
+  return "";
+}
+
+function popupHtml(b, dist) {
+  const rows = b.layers.map(([f, to, c, d]) =>
+    `<tr><td>${fmt(f, 2)}–${fmt(to, 2)} m</td><td><span class="chip" style="background:${CATS[c].color}"></span>${esc(d) || "<i>(blank)</i>"}</td></tr>`).join("");
+  const accWarn = /NOT KNOWN|^$/i.test(b.acc) ? ' <span class="warn">(position unverified)</span>' : "";
+  return `<div class="pop">
+    <h3>Bore ${esc(b.id)}</h3>
+    ${locationWarnHtml(b)}
+    <table>
+      <tr><td>Dataset</td><td>${esc(DATASETS[b.ds])}</td></tr>
+      ${dist != null ? `<tr><td>Distance</td><td>${Math.round(dist)} m from search point</td></tr>` : ""}
+      <tr><td>Bore depth</td><td>${fmt(b.depth)} m</td></tr>
+      <tr><td>Drilled</td><td>${esc(b.drilled) || "unknown"}</td></tr>
+      <tr><td>Log</td><td>${esc(b.logSrc)}</td></tr>
+      <tr><td>Coordinates</td><td>${b.lat.toFixed(5)}, ${b.lon.toFixed(5)}</td></tr>
+      <tr><td>Parish</td><td>${esc(b.parish) || "not recorded"}</td></tr>
+      <tr><td>Position</td><td>${esc(b.acc) || "unknown"}${accWarn}</td></tr>
+      <tr><td>Summary</td><td>Fill ${b.fill ? fmt(b.fill) + " m" : "none logged"} · ${esc(CATS[b.dom].name)} (top ${TOP_M} m) · rock ${b.rock == null ? "not reached" : "at " + fmt(b.rock) + " m"}${b.soft ? ' · <span class="warn">soft/organic layer</span>' : ""}</td></tr>
+    </table>
+    <div class="log">${stripSvg(b, Math.min(Math.max(Math.ceil(b.logDepth / 5) * 5, 5), 15), 18, 180)}<table>${rows}</table></div>
+    ${linksHtml(b)}
+  </div>`;
+}
+
+function markerStyle(b, mode) {
+  return {
+    radius: b.flagged ? 5 : 4,
+    weight: b.flagged ? 2 : 0.6,
+    color: b.flagged ? "#c62828" : "#333",
+    fillColor: colourFor(b, mode),
+    fillOpacity: 0.9,
+  };
+}
+
+function isHiddenByFilter(b) {
+  const hideWrong = document.getElementById("hideWrong").checked;
+  const hideWater = document.getElementById("hideWater").checked;
+  return (hideWrong && b.outParish) || (hideWater && b.inWater);
+}
+
+const markers = new Map();
+for (const b of bores) {
+  const m = L.circleMarker([b.lat, b.lon], markerStyle(b, "dom"));
+  m.on("click", () => m.bindPopup(popupHtml(b, b._dist), { maxWidth: 460 }).openPopup());
+  m.addTo(map);
+  markers.set(b.key, m);
+}
+
+function applyVisibility() {
+  for (const b of bores) {
+    const m = markers.get(b.key);
+    if (isHiddenByFilter(b)) {
+      if (map.hasLayer(m)) map.removeLayer(m);
+    } else if (!map.hasLayer(m)) {
+      m.addTo(map);
+    }
+  }
+}
+
+function recolour() {
+  const mode = document.getElementById("mode").value;
+  for (const b of bores) markers.get(b.key).setStyle(markerStyle(b, mode));
+  renderLegend(mode);
+  applyVisibility();
+}
+document.getElementById("mode").addEventListener("change", recolour);
+document.getElementById("hideWrong").addEventListener("change", () => {
+  applyVisibility();
+  if (lastPoint) runSearch(lastPoint.lat, lastPoint.lon, lastPoint.label);
+});
+document.getElementById("hideWater").addEventListener("change", () => {
+  applyVisibility();
+  if (lastPoint) runSearch(lastPoint.lat, lastPoint.lon, lastPoint.label);
+});
+recolour();
+
+// ---------- search ----------
+let searchLayer = L.layerGroup().addTo(map);
+let lastResults = [];
+let lastLabel = "";
+let lastPoint = null;
+let pendingChoices = null;
+
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371000, r = Math.PI / 180;
+  const dLat = (lat2 - lat1) * r, dLon = (lon2 - lon1) * r;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+const median = a => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+
+function runSearch(lat, lon, label) {
+  const radius = Number(document.getElementById("radius").value);
+  bores.forEach(b => b._dist = null);
+  const hits = [];
+  for (const b of bores) {
+    if (isHiddenByFilter(b)) continue;
+    const d = haversine(lat, lon, b.lat, b.lon);
+    if (d <= radius) { b._dist = d; hits.push(b); }
+  }
+  hits.sort((a, b) => a._dist - b._dist);
+  lastResults = hits;
+  lastLabel = label;
+  lastPoint = { lat, lon, label };
+  pendingChoices = null;
+
+  searchLayer.clearLayers();
+  const circle = L.circle([lat, lon], { radius, color: "#1f5fa8", weight: 2, fillOpacity: 0.05, interactive: false }).addTo(searchLayer);
+  L.marker([lat, lon]).bindTooltip(esc(label)).addTo(searchLayer);
+  map.fitBounds(circle.getBounds(), { padding: [20, 20] });
+  renderResults(hits, radius, label);
+}
+
+function renderResults(hits, radius, label) {
+  const s = document.getElementById("summary");
+  const list = document.getElementById("list");
+  s.classList.remove("muted");
+  if (!hits.length) {
+    s.innerHTML = `<h2>No bores with logs within ${radius} m</h2><div class="muted">${esc(label)}</div><p>Try a larger radius.</p>`;
+    list.innerHTML = "";
+    return;
+  }
+  const withFill = hits.filter(b => b.fill > 0);
+  const withRock = hits.filter(b => b.rock != null);
+  const soft = hits.filter(b => b.soft);
+  const unverified = hits.filter(b => /NOT KNOWN|^$/i.test(b.acc));
+  const domCounts = {};
+  hits.forEach(b => domCounts[b.dom] = (domCounts[b.dom] || 0) + 1);
+  const domText = Object.entries(domCounts).sort((a, b) => b[1] - a[1])
+    .map(([c, n]) => `<span class="chip" style="background:${CATS[c].color}"></span>${esc(CATS[c].name)} ${n}`).join(", ");
+
+  s.innerHTML = `<h2>${hits.length} bore${hits.length > 1 ? "s" : ""} with logs within ${radius} m</h2>
+    <div class="muted">${esc(label)} · nearest ${Math.round(hits[0]._dist)} m</div>
+    <ul>
+      <li>Main material in top ${TOP_M} m: ${domText}</li>
+      <li>Fill at surface in ${withFill.length} of ${hits.length}${withFill.length ? ` (median ${fmt(median(withFill.map(b => b.fill)))} m, max ${fmt(Math.max(...withFill.map(b => b.fill)))} m)` : ""}</li>
+      <li>Rock (incl. weathered) reached in ${withRock.length} of ${hits.length}${withRock.length ? ` (median depth ${fmt(median(withRock.map(b => b.rock)))} m, shallowest ${fmt(Math.min(...withRock.map(b => b.rock)))} m)` : ""}</li>
+      ${soft.length ? `<li class="warn">Soft/organic layers (peat, lignite, Coode Island Silt) within 10 m in ${soft.length}</li>` : ""}
+      ${unverified.length ? `<li class="muted">${unverified.length} bore position${unverified.length > 1 ? "s" : ""} not verified</li>` : ""}
+    </ul>
+    <div class="row"><button id="csv">Download CSV</button><span class="muted">Click a bore for its full log</span></div>`;
+  document.getElementById("csv").onclick = downloadCsv;
+
+  list.innerHTML = hits.slice(0, 300).map(b => `
+    <div class="item" data-key="${esc(b.key)}">
+      ${stripSvg(b)}
+      <div>
+        <div class="t">${esc(b.id)} · ${Math.round(b._dist)} m</div>
+        <div class="d">${esc(DATASETS[b.ds])}${b.drilled ? " · " + esc(b.drilled.slice(0, 4)) : ""} · logged to ${fmt(b.logDepth)} m</div>
+        <div class="d">Fill ${b.fill ? fmt(b.fill) + " m" : "none"} · ${esc(CATS[b.dom].name)} · rock ${b.rock == null ? "not reached" : fmt(b.rock) + " m"}</div>
+        ${locationWarnLine(b)}
+        ${b.soft ? '<div class="d warn">Soft/organic layer within 10 m</div>' : ""}
+        <div class="d muted">${esc(b.layers.slice(0, 3).map(l => `${fmt(l[0])}–${fmt(l[1])} ${l[3]}`).join("; "))}${b.layers.length > 3 ? "…" : ""}</div>
+      </div>
+    </div>`).join("") + (hits.length > 300 ? `<div class="item muted">Showing nearest 300 – use CSV for all.</div>` : "");
+
+  list.querySelectorAll(".item[data-key]").forEach(el => el.addEventListener("click", () => {
+    const b = bores.find(x => x.key === el.dataset.key);
+    const m = markers.get(b.key);
+    map.setView([b.lat, b.lon], Math.max(map.getZoom(), 16));
+    m.bindPopup(popupHtml(b, b._dist), { maxWidth: 460 }).openPopup();
+  }));
+}
+
+function downloadCsv() {
+  const head = ["bore_id", "dataset", "latitude", "longitude", "distance_m", "bore_depth_m", "drilled", "position_accuracy",
+    "fill_thickness_m", `main_material_top_${TOP_M}m`, "depth_to_rock_m", "soft_or_organic_within_10m", "log",
+    "log_record_url", "bore_record_url", "wmis_url", "completion_report_id"];
+  const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const lines = [head.join(",")].concat(lastResults.map(b => {
+    const s = sourceLinks(b);
+    return [
+      b.id, DATASETS[b.ds], b.lat, b.lon, Math.round(b._dist), b.depth, b.drilled, b.acc, b.fill, CATS[b.dom].name,
+      b.rock ?? "", b.soft ? "Y" : "N", b.layers.map(l => `${l[0]}-${l[1]} m: ${l[3]}`).join(" | "),
+      s.log, s.record, s.wmis, s.reportId,
+    ].map(q).join(",");
+  }));
+  const blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `bores near ${lastLabel.replace(/[^\w\s,-]/g, "").slice(0, 60)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+const DATA_BOUNDS = L.latLngBounds(bores.map(b => [b.lat, b.lon])).pad(0.02);
+const radiusText = r => r >= 1000 ? `${r / 1000} km` : `${r} m`;
+
+function countWithin(lat, lon, radius) {
+  const kx = 111320 * Math.cos(lat * Math.PI / 180), ky = 110540;
+  let n = 0;
+  for (const b of bores) {
+    const dx = (b.lon - lon) * kx, dy = (b.lat - lat) * ky;
+    if (dx * dx + dy * dy <= radius * radius) n++;
+  }
+  return n;
+}
+
+async function geocodeCandidates(text) {
+  const ll = text.match(/^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/);
+  if (ll) {
+    let a = Number(ll[1]), b = Number(ll[2]);
+    if (a > 0 && b < 0) [a, b] = [b, a];
+    return [{ lat: a, lon: b, label: `${a.toFixed(5)}, ${b.toFixed(5)}` }];
+  }
+  const q = /victoria|vic\b|\b3\d{3}\b/i.test(text) ? text : `${text}, Victoria, Australia`;
+  const url = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?f=json&maxLocations=50"
+    + "&countryCode=AUS&outFields=Addr_type,Region&location=144.96,-37.81&SingleLine=" + encodeURIComponent(q);
+  const j = await (await fetch(url)).json();
+  let cands = (j.candidates || []).filter(c => c.score >= 85);
+  const vic = cands.filter(c => c.attributes.Region === "Victoria");
+  if (vic.length) cands = vic;
+  if (!cands.length) return [];
+  const top = Math.max(...cands.map(c => c.score));
+
+  const out = [];
+  for (const c of cands.filter(c => c.score >= top - 8)) {
+    const p = { lat: c.location.y, lon: c.location.x, label: c.address };
+    if (!p.label.includes(",")) p.label += c.attributes.Addr_type === "POI" ? " (landmark / place)" : ", Victoria";
+    // Same street split across postcodes, or a suburb returned as both locality and postcode.
+    if (out.some(o => o.label === p.label || haversine(o.lat, o.lon, p.lat, p.lon) < 150)) continue;
+    p.outside = !DATA_BOUNDS.contains([p.lat, p.lon]);
+    out.push(p);
+  }
+  return out.sort((a, b) => a.outside - b.outside || a.label.localeCompare(b.label));
+}
+
+function showChoices(query, items) {
+  pendingChoices = { query, items };
+  lastPoint = null;
+  lastResults = [];
+  bores.forEach(b => b._dist = null);
+  searchLayer.clearLayers();
+  const radius = Number(document.getElementById("radius").value);
+
+  items.forEach((c, i) => {
+    c.count = c.outside ? 0 : countWithin(c.lat, c.lon, radius);
+    L.marker([c.lat, c.lon], {
+      icon: L.divIcon({ className: "", html: `<div class="pin">${i + 1}</div>`, iconSize: [22, 22], iconAnchor: [11, 11] }),
+    }).bindTooltip(`${i + 1}. ${esc(c.label)}`).on("click", () => runSearch(c.lat, c.lon, c.label)).addTo(searchLayer);
+  });
+  map.fitBounds(L.latLngBounds(items.map(c => [c.lat, c.lon])), { padding: [40, 40], maxZoom: 15 });
+
+  const s = document.getElementById("summary");
+  s.classList.remove("muted");
+  s.innerHTML = `<h2>${items.length} places match “${esc(query)}”</h2>
+    <div>Choose the one you want to search (from the list or the numbered pins), or add a suburb or postcode to narrow it down.</div>`;
+  const list = document.getElementById("list");
+  list.innerHTML = items.map((c, i) => `
+    <div class="choice" data-i="${i}">
+      <span class="n">${i + 1}</span>
+      <div>
+        <div class="t">${esc(c.label)}</div>
+        <div class="d muted">${c.outside ? "Outside the mapped area"
+          : `${c.count} bore${c.count === 1 ? "" : "s"} with logs within ${radiusText(radius)}`}</div>
+      </div>
+    </div>`).join("");
+  list.querySelectorAll(".choice").forEach(el => el.addEventListener("click", () => {
+    const c = items[Number(el.dataset.i)];
+    runSearch(c.lat, c.lon, c.label);
+  }));
+}
+
+async function doSearch() {
+  const text = document.getElementById("q").value.trim();
+  if (!text) return;
+  const btn = document.getElementById("go");
+  btn.disabled = true; btn.textContent = "Searching…";
+  try {
+    const items = await geocodeCandidates(text);
+    if (!items.length) alert(`Could not find "${text}". Try adding a suburb or postcode.`);
+    else if (items.length === 1) runSearch(items[0].lat, items[0].lon, items[0].label);
+    else showChoices(text, items);
+  } catch (e) {
+    alert(`Address search failed: ${e.message}`);
+  } finally {
+    btn.disabled = false; btn.textContent = "Search";
+  }
+}
+document.getElementById("go").addEventListener("click", doSearch);
+document.getElementById("q").addEventListener("keydown", e => { if (e.key === "Enter") doSearch(); });
+document.getElementById("radius").addEventListener("change", () => {
+  if (lastPoint) runSearch(lastPoint.lat, lastPoint.lon, lastPoint.label);
+  else if (pendingChoices) showChoices(pendingChoices.query, pendingChoices.items);
+});
+document.getElementById("clear").addEventListener("click", () => {
+  searchLayer.clearLayers();
+  lastResults = [];
+  lastPoint = null;
+  pendingChoices = null;
+  bores.forEach(b => b._dist = null);
+  document.getElementById("summary").className = "muted";
+  document.getElementById("summary").innerHTML = "Search an address or right-click the map to list nearby bores and summarise the shallow ground conditions.";
+  document.getElementById("list").innerHTML = "";
+});
+map.on("contextmenu", e => runSearch(e.latlng.lat, e.latlng.lng, `${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}`));
+</script>
+</body>
+</html>
